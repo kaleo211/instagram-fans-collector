@@ -7,7 +7,9 @@ import (
     "golang.org/x/net/html"
     "strings"
     "regexp"
+    "time"
 )
+
 
 var client = &http.Client{}
 var transport = &http.Transport{}
@@ -17,6 +19,7 @@ var cookies_size = 0
 const account = "dirty.lily"
 const password = ""
 const host = "https://instagram.com"
+
 
 func UpdateCookies(cokies []*http.Cookie) {
     for _, c := range cokies {
@@ -128,19 +131,21 @@ func GetPosts(username string) (posts []string) {
         Follow(user_id, username)
     }
 
-    posts = make([]string, 50)
+    array := make([]string, 100)
     re_postcode := regexp.MustCompile("{\"code\":\"([\\w]{10})\"")
     matches := re_postcode.FindAllStringSubmatch(data, -1)
     for i, e := range matches {
-        posts[i] = e[1]
+        if i>=100 {break;}
+        array[i] = e[1]
     }
-    logger.Println("Retrieved", len(matches), "posts for user:", username)
+    posts = array[0:len(matches)]
+    logger.Println("Retrieved", len(posts), "posts for user:", username)
 
     return
 }
 
 
-func GetCommentators(postcode string) (commentators []string) {
+func GetCommentators(postcode string) (users []string) {
     comments_url := host + "/p/" + postcode + "/"
     req, _ := http.NewRequest("GET", comments_url, nil)
     for i:=0; i<cookies_size; i+=1 {
@@ -152,6 +157,7 @@ func GetCommentators(postcode string) (commentators []string) {
 
     if resp.StatusCode!=200 {
         logger.Println("Failed to retrieve commentators for post:", postcode)
+        users = make([]string, 0)
         return
     }
 
@@ -173,17 +179,27 @@ func GetCommentators(postcode string) (commentators []string) {
     }
     f(doc)
 
-    commentators = make([]string, 50)
+    commentators := make([]string, 100)
     re := regexp.MustCompile("{\"username\":\"([\\w]+)\"")
-    for i, e := range re.FindAllStringSubmatch(data, -1) {
+    matches := re.FindAllStringSubmatch(data, -1)
+    for i, e := range matches {
+        if (i>=100) {break;}
         commentators[i] = e[1]
     }
-    logger.Println("Retrieved", len(commentators), "commentators for post:", postcode)
+    users = commentators[:len(matches)]
+    logger.Println("Retrieved", len(users), "commentators for post:", postcode)
 
     return
 }
 
+
 func Follow(user_id string, username string) {
+
+    if (Check(username)) {
+        logger.Println(username, "had already been followed.")
+        return
+    }
+
     data := url.Values{}
     like_url := "https://instagram.com/web/friendships/" + user_id + "/follow/"
     req, _ := http.NewRequest("POST", like_url, bytes.NewBufferString(data.Encode()))
@@ -217,7 +233,9 @@ func Follow(user_id string, username string) {
     if resp.StatusCode==200 {
         logger.Println("Followed", username+"("+user_id+") successfully.")
     } else {
-        logger.Println(resp.Status)
-        logger.Println("Failed to follow", username+"("+user_id+")")
+        logger.Println(resp.Status, "Failed to follow", username+"("+user_id+")")
+        logger.Println("Sleep for 1 minute...")
+        time.Sleep(1 * time.Minute)
     }
+    SaveFollowed(username)
 }

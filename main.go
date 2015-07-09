@@ -1,35 +1,30 @@
 package main
 
 import (
-    "fmt"
     "log"
     "os"
-    "math/rand"
+    "database/sql"
 )
 
 var logger = log.New(os.Stdout, "", log.Ltime | log.Lshortfile)
+var db *sql.DB
 
 func main() {
-    fmt.Println()
+
+    db,_ = sql.Open("mysql", "kaleo211:iampassword@/instagram")
+
     LoginInstagram()
-    posts := GetPosts("beyonce")
+
+    SaveToFollow("natgeo")
 
     for true {
-        post_seed := rand.Intn(len(posts))
-        var tmp []string
-        for i, postcode := range posts {
-
-            users := GetCommentators(postcode)
-            user_seed := rand.Intn(len(users))
-            for j, user := range users {
-
-                if i==post_seed && j==user_seed {
-                    tmp = GetPosts(user)
-                } else {
-                    GetPosts(user)
-                }
+        user := Next()
+        posts := GetPosts(user)
+        for _, post := range posts {
+            users := GetCommentators(post)
+            for _, user = range users {
+                SaveToFollow(user)
             }
         }
-        posts = tmp
     }
 }
