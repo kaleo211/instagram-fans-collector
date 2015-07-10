@@ -13,18 +13,22 @@ func main() {
 
     db,_ = sql.Open("mysql", "kaleo211:iampassword@/instagram")
 
-    LoginInstagram()
+    Login()
 
-    SaveToFollow("natgeo")
+    user_id, posts := GetPosts("natgeo")
 
     for true {
-        user := Next()
-        posts := GetPosts(user)
+        var seed_posts []string
         for _, post := range posts {
             users := GetCommentators(post)
-            for _, user = range users {
-                SaveToFollow(user)
+            for _, user := range users {
+                user_id, seed_posts = GetPosts(user)
+                if len(posts)>5 && !Check(user) && user_id!="" {
+                    Follow(user_id, user)
+                    break;
+                }
             }
         }
+        posts = seed_posts
     }
 }

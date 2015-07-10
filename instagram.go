@@ -8,6 +8,7 @@ import (
     "strings"
     "regexp"
     "time"
+    "io/ioutil"
 )
 
 
@@ -17,7 +18,7 @@ var cookies = make([]*http.Cookie, 20)
 var cookies_size = 0
 
 const account = "dirty.lily"
-const password = ""
+const password = "zxcvbnm123"
 const host = "https://instagram.com"
 
 
@@ -37,12 +38,12 @@ func UpdateCookies(cokies []*http.Cookie) {
     }
 }
 
-func LoginInstagram() {
+func Login() {
 
-    Instagram := "https://instagram.com/accounts/login/"
-    req, _ := http.NewRequest("GET", Instagram, nil)
-    resp, _ := client.Do(req)
-    UpdateCookies(resp.Cookies())
+    instagram := "https://instagram.com/accounts/login/"
+    request, _ := http.NewRequest("GET", instagram, nil)
+    response, _ := client.Do(request)
+    UpdateCookies(response.Cookies())
 
     // set post form data
     data := url.Values{}
@@ -50,7 +51,7 @@ func LoginInstagram() {
     data.Set("password", password)
 
     instagram_login := "https://instagram.com/accounts/login/ajax/"
-    req, _ = http.NewRequest("POST", instagram_login, bytes.NewBufferString(data.Encode()))
+    req, _ := http.NewRequest("POST", instagram_login, bytes.NewBufferString(data.Encode()))
 
     for i:=0; i<cookies_size; i+=1 {
         c := cookies[i]
@@ -77,9 +78,12 @@ func LoginInstagram() {
     req.Header.Set("X-Instagram-AJAX", "1")
     req.Header.Set("X-Requested-With", "XMLHttpRequest")
 
-    resp, _ = transport.RoundTrip(req)
+    resp, _ := client.Do(req)
     defer resp.Body.Close()
     UpdateCookies(resp.Cookies())
+
+    contents, _ := ioutil.ReadAll(resp.Body)
+    logger.Println("%s", string(contents))
 
     if resp.StatusCode==200 {
         logger.Println("login into Instagram successfully.")
@@ -89,7 +93,34 @@ func LoginInstagram() {
 }
 
 
-func GetPosts(username string) (posts []string) {
+func Logout() {
+
+    logout := "https://instagram.com/accounts/logout/"
+    req, _ := http.NewRequest("POST", logout, bytes.NewBufferString(url.Values{}.Encode()))
+
+    for i:=0; i<cookies_size; i+=1 {
+        c := cookies[i]
+        if c.Name=="csrftoken" || c.Name=="mid" || c.Name=="sessionid" || c.Name=="ds_user_id" {
+            req.AddCookie(c)
+        }
+    }
+
+    req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+    req.Header.Set("Accept-Encoding", "gzip, deflate")
+    req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+    req.Header.Set("Connection", "keep-alive")
+    req.Header.Set("Host", "instagram.com")
+    req.Header.Set("Referer", "https://instagram.com/dirty.lily/")
+    req.Header.Set("User-Agent", "  Mozilla/5.0 (Macintosh; Intel Mac OS X 10.10; rv:36.0) Gecko/20100101 Firefox/36.0")
+
+    resp, _ := client.Do(req)
+    defer resp.Body.Close()
+    UpdateCookies(resp.Cookies())
+
+    logger.Println(resp.StatusCode)
+}
+
+func GetPosts(username string) (user_id string, posts []string) {
 
     posts_url := host +"/" + username
     req, _ := http.NewRequest("GET", posts_url, nil)
@@ -124,11 +155,10 @@ func GetPosts(username string) (posts []string) {
     }
     f(doc)
 
-    re_user_id := regexp.MustCompile("profile_pic_url.+profile_([0-9]+)_")
+    re_user_id := regexp.MustCompile("\"owner\"[^\"]*\"id\"[^\"]*\"([0-9]+)\"")
     match := re_user_id.FindStringSubmatch(data)
     if len(match) > 0 {
-        user_id := match[1]
-        Follow(user_id, username)
+        user_id = match[1]
     }
 
     array := make([]string, 100)
@@ -232,10 +262,16 @@ func Follow(user_id string, username string) {
     defer resp.Body.Close()
     if resp.StatusCode==200 {
         logger.Println("Followed", username+"("+user_id+") successfully.")
-    } else {
-        logger.Println(resp.Status, "Failed to follow", username+"("+user_id+")")
-        logger.Println("Sleep for 1 minute...")
-        time.Sleep(1 * time.Minute)
+        SaveFollowed(username)
+        return
     }
-    SaveFollowed(username)
+
+    logger.Println(resp.Status)
+    logger.Println("Failed to follow", username+"("+user_id+")")
+    if resp.StatusCode==403 {
+        logger.Println("Sleep for 70 seconds...Then relogin")
+        time.Sleep(70 * time.Second)
+        // Logout()
+        // Login()
+    }
 }
